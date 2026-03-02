@@ -806,10 +806,11 @@ async function loadFiles(files) {
       for (const line of lines) {
         try { entries.push(JSON.parse(line)); } catch { parseErrors++; }
       }
-      console.log('[loadFiles]', file.name, 'fileSize:', file.size, 'textLen:', text.length, 'lines:', lines.length, 'entries:', entries.length, 'parseErrors:', parseErrors);
       if (entries.length === 0) continue;
 
-      const sessionId = entries[0]?.sessionId || file.name.replace('.jsonl', '');
+      // Always use filename as session ID to avoid collisions
+      // (agent sub-session files have internal sessionId matching parent, causing duplicates)
+      const sessionId = file.name.replace('.jsonl', '');
       const firstTimestamp = entries.find(e => e.timestamp)?.timestamp;
       const summaryEntry = entries.find(e => e.type === 'summary');
       const firstUserMsg = entries.find(e => e.type === 'user' && e.message);
@@ -943,9 +944,6 @@ function renderSession(session) {
 
   // Scroll to top
   chatEl.scrollTop = 0;
-
-  // Debug: show message count
-  console.log('[renderSession]', session.id, 'entries:', entries.length, 'messages:', messages.length);
 }
 
 // ============ Build messages from entries ============
@@ -1649,8 +1647,6 @@ function scrollToMatch(targetUuid, targetToolId, query) {
       }
     }
   }
-
-  console.log('[scrollToMatch]', 'msgs:', allMsgs.length, 'found:', foundBy || 'NONE', 'uuid:', targetUuid?.substring(0,12), 'toolId:', targetToolId?.substring(0,12));
 
   if (!targetMsg) return;
 
