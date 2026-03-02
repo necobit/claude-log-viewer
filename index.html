@@ -519,6 +519,23 @@ mark.search-hit.current {
   background: #e67e22;
   outline: 2px solid #e67e22;
 }
+.search-back-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--accent);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.search-back-bar:hover {
+  background: var(--bg-hover);
+}
 
 /* ============ Full-page drop overlay ============ */
 .drop-overlay {
@@ -1394,6 +1411,8 @@ let searchResults = [];
 let searchResultIndex = -1;
 let searchDebounce = null;
 let isSearchMode = false;
+let lastSearchQuery = '';
+let lastSearchResults = [];
 
 function openLogSearch() {
   const bar = document.getElementById('logSearchBar');
@@ -1536,6 +1555,23 @@ function performSearch(query) {
   }
 }
 
+function addSearchBackBar(query) {
+  const chatEl = document.getElementById('chatMessages');
+  const bar = document.createElement('div');
+  bar.className = 'search-back-bar';
+  bar.innerHTML = `&#9664; 「${escapeHtml(query)}」の検索結果に戻る (${lastSearchResults.length}件)`;
+  bar.addEventListener('click', () => {
+    searchResults = lastSearchResults;
+    isSearchMode = true;
+    renderSearchResults(query);
+    if (searchResults.length > 0) {
+      searchResultIndex = 0;
+      highlightSearchResult();
+    }
+  });
+  chatEl.insertBefore(bar, chatEl.firstChild);
+}
+
 function renderSearchResults(query) {
   const chatEl = document.getElementById('chatMessages');
   chatEl.innerHTML = '';
@@ -1589,6 +1625,9 @@ function renderSearchResults(query) {
       const targetUuid = r.entryUuid;
       const targetToolId = r.toolUseId;
       const sessionId = r.sessionId;
+      // Save search state for "back" navigation
+      lastSearchQuery = searchQuery;
+      lastSearchResults = [...searchResults];
       document.getElementById('logSearchInput').value = '';
       document.getElementById('logSearchBar').classList.remove('visible');
       document.getElementById('searchInfo').textContent = '';
@@ -1596,8 +1635,9 @@ function renderSearchResults(query) {
       searchResultIndex = -1;
       isSearchMode = false;
       selectSession(sessionId);
+      // Add "back to search results" bar
+      addSearchBackBar(searchQuery);
       // After rendering, scroll to matched entry and expand details
-      // Use setTimeout to ensure DOM is fully rendered
       setTimeout(() => {
         scrollToMatch(targetUuid, targetToolId, searchQuery);
       }, 50);
