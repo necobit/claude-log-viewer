@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Log Viewer</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" id="hljs-theme">
+<style>
+/* ============ CSS Variables ============ */
+:root {
+  --sidebar-width: 280px;
+}
+[data-theme="dark"] {
+  --bg-primary: #1a1a2e;
+  --bg-secondary: #16213e;
+  --bg-sidebar: #0f3460;
+  --bg-message-user: #1a3a5c;
+  --bg-message-assistant: #1e1e3a;
+  --bg-message-system: #2a2a3e;
+  --bg-details: #12122a;
+  --bg-input: #1e1e3e;
+  --bg-hover: #1a3a6e;
+  --bg-drop: rgba(52, 152, 219, 0.15);
+  --text-primary: #e0e0e0;
+  --text-secondary: #a0a0b0;
+  --text-muted: #707080;
+  --border-color: #2a2a4e;
+  --accent: #3498db;
+  --accent-hover: #2980b9;
+  --user-accent: #2980b9;
+  --scrollbar-thumb: #3a3a5e;
+  --shadow: rgba(0,0,0,0.3);
+  --code-bg: #0d1117;
+  --thinking-bg: #1a1a30;
+  --tool-bg: #1a2a1a;
+  --progress-bg: #2a1a2a;
+  --badge-bg: #3a3a5e;
+}
+[data-theme="light"] {
+  --bg-primary: #f5f5f5;
+  --bg-secondary: #ffffff;
+  --bg-sidebar: #e8eef4;
+  --bg-message-user: #dceffc;
+  --bg-message-assistant: #f0f0f8;
+  --bg-message-system: #e8e8ec;
+  --bg-details: #e0e0ec;
+  --bg-input: #ffffff;
+  --bg-hover: #d0dff0;
+  --bg-drop: rgba(52, 152, 219, 0.1);
+  --text-primary: #1a1a2e;
+  --text-secondary: #505068;
+  --text-muted: #808098;
+  --border-color: #d0d0e0;
+  --accent: #2980b9;
+  --accent-hover: #2471a3;
+  --user-accent: #2471a3;
+  --scrollbar-thumb: #b0b0c0;
+  --shadow: rgba(0,0,0,0.1);
+  --code-bg: #f6f8fa;
+  --thinking-bg: #eeeef8;
+  --tool-bg: #eef6ee;
+  --progress-bg: #f4eef4;
+  --badge-bg: #d0d0e0;
+}
+
+/* ============ Base ============ */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  height: 100vh;
+  overflow: hidden;
+}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+
+/* ============ Layout ============ */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  min-height: 48px;
+  flex-shrink: 0;
+}
+.header h1 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.header-actions { display: flex; align-items: center; gap: 8px; }
+
+.theme-toggle {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.theme-toggle:hover { background: var(--bg-hover); }
+
+.main-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ============ Sidebar ============ */
+.sidebar {
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.sidebar-header { padding: 12px; flex-shrink: 0; }
+
+.folder-btn {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+.folder-btn:hover { background: var(--accent-hover); }
+
+.drop-zone {
+  border: 2px dashed var(--border-color);
+  border-radius: 6px;
+  padding: 16px 8px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+.drop-zone.drag-over {
+  border-color: var(--accent);
+  background: var(--bg-drop);
+  color: var(--accent);
+}
+
+.session-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.session-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background 0.15s;
+  font-size: 13px;
+}
+.session-item:hover { background: var(--bg-hover); }
+.session-item.active {
+  background: var(--bg-hover);
+  border-left-color: var(--accent);
+}
+.session-item .session-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+.session-item .session-date {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.sidebar-stats {
+  padding: 12px;
+  border-top: 1px solid var(--border-color);
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.sidebar-stats div { margin-bottom: 4px; }
+.stat-label { color: var(--text-muted); }
+.stat-value { color: var(--text-primary); font-weight: 500; }
+
+/* ============ Chat View ============ */
+.chat-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.welcome-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  text-align: center;
+  gap: 12px;
+}
+.welcome-screen .icon { font-size: 48px; opacity: 0.5; }
+.welcome-screen p { font-size: 14px; max-width: 400px; line-height: 1.6; }
+
+/* ============ Messages ============ */
+.message {
+  margin-bottom: 12px;
+  max-width: 85%;
+  animation: fadeIn 0.2s ease;
+}
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+.message-user {
+  margin-left: auto;
+  background: var(--bg-message-user);
+  border-radius: 12px 12px 4px 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--user-accent);
+}
+.message-assistant {
+  margin-right: auto;
+  background: var(--bg-message-assistant);
+  border-radius: 12px 12px 12px 4px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+}
+.message-system {
+  margin: 8px auto;
+  max-width: 70%;
+  background: var(--bg-message-system);
+  border-radius: 8px;
+  padding: 8px 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+}
+
+.message-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.message-meta .model-name { font-weight: 600; color: var(--accent); }
+.message-meta .token-info { margin-left: auto; }
+
+/* ============ Content blocks ============ */
+.message-content {
+  font-size: 14px;
+  line-height: 1.65;
+  word-break: break-word;
+}
+.message-content p { margin-bottom: 8px; }
+.message-content p:last-child { margin-bottom: 0; }
+.message-content ul, .message-content ol { margin: 4px 0 8px 20px; }
+.message-content li { margin-bottom: 2px; }
+.message-content code {
+  background: var(--code-bg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 13px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+}
+.message-content pre {
+  background: var(--code-bg);
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+  margin: 8px 0;
+  border: 1px solid var(--border-color);
+}
+.message-content pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.message-content a { color: var(--accent); text-decoration: none; }
+.message-content a:hover { text-decoration: underline; }
+.message-content table { border-collapse: collapse; margin: 8px 0; width: 100%; }
+.message-content th, .message-content td {
+  border: 1px solid var(--border-color);
+  padding: 6px 10px;
+  text-align: left;
+  font-size: 13px;
+}
+.message-content th { background: var(--bg-details); }
+.message-content blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+  color: var(--text-secondary);
+  margin: 8px 0;
+}
+.message-content h1, .message-content h2, .message-content h3,
+.message-content h4, .message-content h5, .message-content h6 {
+  margin: 12px 0 6px;
+}
+.message-content h1 { font-size: 1.3em; }
+.message-content h2 { font-size: 1.15em; }
+.message-content h3 { font-size: 1.05em; }
+
+/* ============ Collapsible blocks ============ */
+details {
+  margin: 6px 0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+details summary {
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  border-radius: 6px;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+details summary:hover { opacity: 0.85; }
+details[open] summary { border-radius: 6px 6px 0 0; }
+
+details .details-content {
+  padding: 8px 10px;
+  font-size: 13px;
+  border-radius: 0 0 6px 6px;
+}
+
+.thinking-block summary { background: var(--thinking-bg); color: #b0a0d0; }
+.thinking-block .details-content {
+  background: var(--thinking-bg);
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.tool-block summary { background: var(--tool-bg); color: #80c080; }
+.tool-block .details-content {
+  background: var(--tool-bg);
+  font-size: 12px;
+}
+.tool-input, .tool-result-content {
+  margin: 4px 0;
+}
+.tool-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin: 8px 0 4px;
+}
+.tool-section-label:first-child { margin-top: 0; }
+.tool-json {
+  background: var(--code-bg);
+  border-radius: 4px;
+  padding: 8px;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+}
+
+.progress-block summary { background: var(--progress-bg); color: #c0a0c0; }
+.progress-block .details-content {
+  background: var(--progress-bg);
+  font-size: 12px;
+}
+
+.badge {
+  display: inline-block;
+  background: var(--badge-bg);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.truncated-content { position: relative; }
+.truncated-content .expand-btn {
+  display: block;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+/* ============ Mobile ============ */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 9;
+}
+.menu-toggle {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px;
+}
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    left: -300px;
+    top: 0;
+    bottom: 0;
+    z-index: 10;
+    transition: left 0.3s;
+    box-shadow: 2px 0 12px var(--shadow);
+  }
+  .sidebar.open { left: 0; }
+  .sidebar-overlay.open { display: block; }
+  .menu-toggle { display: block; }
+  .message { max-width: 95%; }
+}
+
+/* ============ Loading ============ */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: var(--text-muted);
+  gap: 8px;
+}
+.spinner {
+  width: 18px; height: 18px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.search-box {
+  padding: 0 12px 8px;
+}
+.search-box input {
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+}
+.search-box input:focus { border-color: var(--accent); }
+.search-box input::placeholder { color: var(--text-muted); }
+
+/* ============ Full-page drop overlay ============ */
+.drop-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(52, 152, 219, 0.15);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.drop-overlay.visible {
+  display: flex;
+}
+.drop-overlay-inner {
+  border: 3px dashed var(--accent);
+  border-radius: 16px;
+  padding: 40px 60px;
+  background: var(--bg-secondary);
+  color: var(--accent);
+  font-size: 18px;
+  font-weight: 600;
+  box-shadow: 0 4px 24px var(--shadow);
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Header -->
+  <div class="header">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button class="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
+      <h1>Claude Log Viewer</h1>
+    </div>
+    <div class="header-actions">
+      <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">Light</button>
+    </div>
+  </div>
+
+  <div class="main-content">
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="folder-btn" onclick="document.getElementById('folderInput').click()">
+          フォルダを選択
+        </button>
+        <input type="file" id="folderInput" webkitdirectory style="display:none" onchange="handleFolderSelect(event)">
+        <div style="font-size:10px;color:var(--text-muted);margin-bottom:6px;text-align:center;">
+          隠しフォルダ表示: Cmd+Shift+.
+        </div>
+        <div class="drop-zone" id="dropZone">
+          ここにフォルダを<br>ドラッグ&ドロップ
+        </div>
+      </div>
+      <div class="search-box" style="display:none" id="searchBox">
+        <input type="text" placeholder="セッションを検索..." oninput="filterSessions(this.value)">
+      </div>
+      <div class="session-list" id="sessionList"></div>
+      <div class="sidebar-stats" id="sidebarStats" style="display:none"></div>
+    </div>
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+    <!-- Chat -->
+    <div class="chat-container">
+      <div class="chat-messages" id="chatMessages">
+        <div class="welcome-screen">
+          <div class="icon">&#128466;</div>
+          <p>Claude Code のログフォルダを選択またはドラッグ&ドロップしてください</p>
+          <p style="font-size:12px;color:var(--text-muted)">~/.claude/projects/ 内のプロジェクトフォルダを選択</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Full-page drop overlay -->
+  <div class="drop-overlay" id="dropOverlay">
+    <div class="drop-overlay-inner">ここにフォルダをドロップ</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js" integrity="sha512-pSeTnZAQF/RHxb0ysMoYQI/BRZsa5XuklcrgFfU3YZIdnD3LvkkqzrIeHxzFi6gKtI8Cpq2DEWdZjMTcNVhUYA==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" integrity="sha512-D9gUyxqja7hBtkWpPWGt9wfbfaMGVt9gnyCvYa+jojwwPHLCzUm5i8rpk7vD7wNee9bA35eYIjobYPaQuKS1MQ==" crossorigin="anonymous"></script>
+<script>
+// ============ Globals ============
+let sessions = [];
+let currentSessionId = null;
+let allSessionItems = [];
+
+// ============ Marked config ============
+marked.setOptions({
+  highlight: (code, lang) => {
+    if (lang && hljs.getLanguage(lang)) {
+      try { return hljs.highlight(code, { language: lang }).value; } catch {}
+    }
+    try { return hljs.highlightAuto(code).value; } catch {}
+    return code;
+  },
+  breaks: true,
+  gfm: true,
+});
+
+// ============ Theme ============
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  document.getElementById('themeBtn').textContent = isDark ? 'Dark' : 'Light';
+  const hljsLink = document.getElementById('hljs-theme');
+  hljsLink.href = isDark
+    ? 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css'
+    : 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css';
+}
+
+// ============ Mobile sidebar ============
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebarOverlay').classList.toggle('open');
+}
+
+// ============ Drag & Drop (full page) ============
+const dropOverlay = document.getElementById('dropOverlay');
+const dropZone = document.getElementById('dropZone');
+let dragCounter = 0;
+
+document.addEventListener('dragenter', e => {
+  e.preventDefault();
+  dragCounter++;
+  dropOverlay.classList.add('visible');
+  dropZone.classList.add('drag-over');
+});
+
+document.addEventListener('dragleave', e => {
+  e.preventDefault();
+  dragCounter--;
+  if (dragCounter <= 0) {
+    dragCounter = 0;
+    dropOverlay.classList.remove('visible');
+    dropZone.classList.remove('drag-over');
+  }
+});
+
+document.addEventListener('dragover', e => {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+});
+
+document.addEventListener('drop', async e => {
+  e.preventDefault();
+  e.stopPropagation();
+  dragCounter = 0;
+  dropOverlay.classList.remove('visible');
+  dropZone.classList.remove('drag-over');
+
+  const chatEl = document.getElementById('chatMessages');
+  chatEl.innerHTML = '<div class="loading"><div class="spinner"></div>ファイルをスキャン中...</div>';
+
+  try {
+    const items = e.dataTransfer.items;
+
+    // Method 1: File System Access API (handles problematic folder names)
+    if (items && items.length > 0 && typeof items[0].getAsFileSystemHandle === 'function') {
+      const files = [];
+      const handles = [];
+      for (let i = 0; i < items.length; i++) {
+        try {
+          const handle = await items[i].getAsFileSystemHandle();
+          if (handle) handles.push(handle);
+        } catch (e) {
+          console.warn('[D&D] getAsFileSystemHandle failed for item', i, e);
+        }
+      }
+      if (handles.length > 0) {
+        for (const handle of handles) {
+          await traverseHandle(handle, files);
+        }
+        const jsonlFiles = files.filter(f => f.name.endsWith('.jsonl'));
+        console.log('[D&D] FileSystemHandle: total files:', files.length, 'jsonl:', jsonlFiles.length);
+        if (jsonlFiles.length > 0) {
+          loadFiles(jsonlFiles);
+          return;
+        }
+      }
+    }
+
+    // Method 2: webkitGetAsEntry (older API, folder recursion)
+    if (items && items.length > 0) {
+      const files = [];
+      const entries = [];
+      for (let i = 0; i < items.length; i++) {
+        const entry = items[i].webkitGetAsEntry?.();
+        if (entry) entries.push(entry);
+      }
+      if (entries.length > 0) {
+        for (const entry of entries) {
+          await traverseEntry(entry, files);
+        }
+        const jsonlFiles = files.filter(f => f.name.endsWith('.jsonl'));
+        console.log('[D&D] webkitEntry: total files:', files.length, 'jsonl:', jsonlFiles.length);
+        if (jsonlFiles.length > 0) {
+          loadFiles(jsonlFiles);
+          return;
+        }
+      }
+    }
+
+    chatEl.innerHTML = '<div class="welcome-screen"><p>JSONLファイルが見つかりませんでした</p><p style="font-size:12px;color:var(--text-muted)">.jsonl ファイルを含むフォルダを選択してください</p></div>';
+  } catch (err) {
+    console.error('[D&D] Error:', err);
+    chatEl.innerHTML = '<div class="welcome-screen"><p>読み込みエラー</p><p style="font-size:12px;color:var(--text-muted)">' + escapeHtml(err.message) + '</p></div>';
+  }
+});
+
+// File System Access API (modern, handles special folder names)
+async function traverseHandle(handle, files) {
+  if (handle.kind === 'file') {
+    try {
+      const file = await handle.getFile();
+      files.push(file);
+    } catch (e) {
+      console.warn('[D&D] Failed to getFile:', handle.name, e);
+    }
+  } else if (handle.kind === 'directory') {
+    try {
+      for await (const child of handle.values()) {
+        await traverseHandle(child, files);
+      }
+    } catch (e) {
+      console.warn('[D&D] Failed to read dir:', handle.name, e);
+    }
+  }
+}
+
+// Legacy webkitGetAsEntry API (fallback)
+async function traverseEntry(entry, files) {
+  if (entry.isFile) {
+    try {
+      const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+      files.push(file);
+    } catch (e) {
+      console.warn('[D&D] Failed to read file:', entry.fullPath, e);
+    }
+  } else if (entry.isDirectory) {
+    try {
+      const reader = entry.createReader();
+      let allEntries = [];
+      const readBatch = () => new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+      let batch;
+      do {
+        batch = await readBatch();
+        allEntries = allEntries.concat(Array.from(batch));
+      } while (batch.length > 0);
+      for (const child of allEntries) {
+        await traverseEntry(child, files);
+      }
+    } catch (e) {
+      console.warn('[D&D] Failed to read dir:', entry.fullPath, e);
+    }
+  }
+}
+
+// ============ Folder select ============
+function handleFolderSelect(event) {
+  const files = Array.from(event.target.files).filter(f => f.name.endsWith('.jsonl'));
+  if (files.length > 0) loadFiles(files);
+}
+
+// ============ Load files ============
+async function loadFiles(files) {
+  const chatEl = document.getElementById('chatMessages');
+  chatEl.innerHTML = '<div class="loading"><div class="spinner"></div>読み込み中...</div>';
+  sessions = [];
+
+  for (const file of files) {
+    try {
+      const text = await file.text();
+      const lines = text.split('\n').filter(l => l.trim());
+      const entries = [];
+      for (const line of lines) {
+        try { entries.push(JSON.parse(line)); } catch {}
+      }
+      if (entries.length === 0) continue;
+
+      const sessionId = entries[0]?.sessionId || file.name.replace('.jsonl', '');
+      const firstTimestamp = entries.find(e => e.timestamp)?.timestamp;
+      const summaryEntry = entries.find(e => e.type === 'summary');
+      const firstUserMsg = entries.find(e => e.type === 'user' && e.message);
+      let sessionName = summaryEntry?.summary || '';
+      if (!sessionName && firstUserMsg) {
+        const content = firstUserMsg.message.content;
+        if (typeof content === 'string') {
+          sessionName = content.substring(0, 60);
+        } else if (Array.isArray(content)) {
+          const textBlock = content.find(b => b.type === 'text');
+          if (textBlock) sessionName = textBlock.text.substring(0, 60);
+        }
+      }
+      if (!sessionName) sessionName = sessionId.substring(0, 16);
+
+      sessions.push({
+        id: sessionId,
+        name: sessionName,
+        timestamp: firstTimestamp,
+        entries,
+        file: file.name,
+      });
+    } catch {}
+  }
+
+  sessions.sort((a, b) => {
+    if (!a.timestamp) return 1;
+    if (!b.timestamp) return -1;
+    return new Date(b.timestamp) - new Date(a.timestamp);
+  });
+
+  renderSessionList();
+  if (sessions.length > 0) {
+    selectSession(sessions[0].id);
+  } else {
+    chatEl.innerHTML = '<div class="welcome-screen"><p>JSONLファイルが見つかりませんでした</p></div>';
+  }
+}
+
+// ============ Session list ============
+function renderSessionList() {
+  const listEl = document.getElementById('sessionList');
+  listEl.innerHTML = '';
+  allSessionItems = [];
+
+  for (const session of sessions) {
+    const item = document.createElement('div');
+    item.className = 'session-item';
+    item.dataset.id = session.id;
+    item.dataset.searchText = (session.name + ' ' + session.id).toLowerCase();
+    const dateStr = session.timestamp ? formatDate(session.timestamp) : '';
+    item.innerHTML = `<div class="session-name" title="${escapeHtml(session.name)}">${escapeHtml(session.name)}</div>
+      <div class="session-date">${dateStr}</div>`;
+    item.addEventListener('click', () => selectSession(session.id));
+    listEl.appendChild(item);
+    allSessionItems.push(item);
+  }
+
+  document.getElementById('searchBox').style.display = sessions.length > 1 ? '' : 'none';
+}
+
+function filterSessions(query) {
+  const q = query.toLowerCase();
+  for (const item of allSessionItems) {
+    item.style.display = item.dataset.searchText.includes(q) ? '' : 'none';
+  }
+}
+
+function selectSession(id) {
+  currentSessionId = id;
+  for (const item of allSessionItems) {
+    item.classList.toggle('active', item.dataset.id === id);
+  }
+  const session = sessions.find(s => s.id === id);
+  if (session) renderSession(session);
+  // close mobile sidebar
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('open');
+}
+
+// ============ Render session ============
+function renderSession(session) {
+  const chatEl = document.getElementById('chatMessages');
+  chatEl.innerHTML = '';
+
+  const entries = session.entries;
+  const messages = buildMessages(entries);
+
+  // Stats
+  let totalInputTokens = 0, totalOutputTokens = 0, totalCacheRead = 0, totalCacheCreate = 0;
+  let messageCount = 0;
+  let modelName = '';
+
+  for (const entry of entries) {
+    if (entry.type === 'assistant') {
+      const usage = entry.message?.usage;
+      if (usage) {
+        totalInputTokens += usage.input_tokens || 0;
+        totalOutputTokens += usage.output_tokens || 0;
+        totalCacheRead += usage.cache_read_input_tokens || 0;
+        totalCacheCreate += usage.cache_creation_input_tokens || 0;
+      }
+      if (entry.message?.model && !modelName) modelName = entry.message.model;
+    }
+    if (entry.type === 'user' || entry.type === 'assistant') messageCount++;
+  }
+
+  // Render messages
+  for (const msg of messages) {
+    chatEl.appendChild(renderMessage(msg));
+  }
+
+  // Stats sidebar
+  const statsEl = document.getElementById('sidebarStats');
+  statsEl.style.display = '';
+  statsEl.innerHTML = `
+    <div><span class="stat-label">Model: </span><span class="stat-value">${escapeHtml(modelName || 'N/A')}</span></div>
+    <div><span class="stat-label">Messages: </span><span class="stat-value">${messageCount}</span></div>
+    <div><span class="stat-label">Input: </span><span class="stat-value">${formatTokens(totalInputTokens)}</span></div>
+    <div><span class="stat-label">Output: </span><span class="stat-value">${formatTokens(totalOutputTokens)}</span></div>
+    <div><span class="stat-label">Cache Read: </span><span class="stat-value">${formatTokens(totalCacheRead)}</span></div>
+    <div><span class="stat-label">Cache Create: </span><span class="stat-value">${formatTokens(totalCacheCreate)}</span></div>
+  `;
+
+  // Scroll to top
+  chatEl.scrollTop = 0;
+}
+
+// ============ Build messages from entries ============
+function buildMessages(entries) {
+  const messages = [];
+  // Map tool_use IDs to entries for pairing
+  const toolUseMap = new Map();
+  // Map parentToolUseID to progress entries
+  const progressMap = new Map();
+  // Collect assistant entries by requestId to merge
+  const assistantGroups = new Map();
+
+  for (const entry of entries) {
+    if (entry.type === 'file-history-snapshot' || entry.type === 'summary') continue;
+
+    if (entry.type === 'progress') {
+      const pid = entry.parentToolUseID;
+      if (pid) {
+        if (!progressMap.has(pid)) progressMap.set(pid, []);
+        progressMap.get(pid).push(entry);
+      }
+      continue;
+    }
+
+    if (entry.type === 'system') {
+      messages.push({ type: 'system', entry });
+      continue;
+    }
+
+    if (entry.type === 'user') {
+      const content = entry.message?.content;
+      if (!content) continue;
+      // Check if it's a tool_result
+      if (Array.isArray(content)) {
+        const toolResults = content.filter(b => b.type === 'tool_result');
+        const textBlocks = content.filter(b => b.type === 'text');
+        if (toolResults.length > 0) {
+          // Store tool_results for pairing
+          for (const tr of toolResults) {
+            toolUseMap.set(tr.tool_use_id, { result: tr, entry });
+          }
+          // If there's also text, show it
+          if (textBlocks.length > 0 && textBlocks.some(b => b.text && b.text.trim() && !b.text.includes('[Request interrupted'))) {
+            messages.push({ type: 'user', entry, textOnly: true });
+          }
+          continue;
+        }
+        // Check if it's an interruption-only message
+        if (textBlocks.length > 0 && textBlocks.every(b => b.text?.includes('[Request interrupted'))) {
+          continue;
+        }
+      }
+      messages.push({ type: 'user', entry });
+      continue;
+    }
+
+    if (entry.type === 'assistant') {
+      const reqId = entry.requestId;
+      const msgId = entry.message?.id;
+      const groupKey = msgId || reqId || entry.uuid;
+      if (assistantGroups.has(groupKey)) {
+        assistantGroups.get(groupKey).push(entry);
+      } else {
+        assistantGroups.set(groupKey, [entry]);
+        messages.push({ type: 'assistant', groupKey });
+      }
+      // Record tool_use blocks for pairing
+      const content = entry.message?.content;
+      if (Array.isArray(content)) {
+        for (const b of content) {
+          if (b.type === 'tool_use') {
+            if (!toolUseMap.has(b.id)) toolUseMap.set(b.id, {});
+            toolUseMap.get(b.id).toolUse = b;
+            toolUseMap.get(b.id).assistantEntry = entry;
+          }
+        }
+      }
+    }
+  }
+
+  // Resolve assistant groups
+  return messages.map(msg => {
+    if (msg.type === 'assistant') {
+      const group = assistantGroups.get(msg.groupKey);
+      return { type: 'assistant', entries: group, toolUseMap, progressMap };
+    }
+    return msg;
+  });
+}
+
+// ============ Render a single message ============
+function renderMessage(msg) {
+  const el = document.createElement('div');
+
+  if (msg.type === 'system') {
+    el.className = 'message message-system';
+    const content = msg.entry.content || msg.entry.subtype || 'System';
+    el.textContent = content.length > 200 ? content.substring(0, 200) + '...' : content;
+    return el;
+  }
+
+  if (msg.type === 'user') {
+    el.className = 'message message-user';
+    const entry = msg.entry;
+    const content = entry.message?.content;
+    let html = '';
+
+    if (msg.textOnly && Array.isArray(content)) {
+      const texts = content.filter(b => b.type === 'text').map(b => b.text).join('\n');
+      html = renderMarkdown(texts);
+    } else if (typeof content === 'string') {
+      html = renderMarkdown(content);
+    } else if (Array.isArray(content)) {
+      const parts = [];
+      for (const b of content) {
+        if (b.type === 'text') parts.push(b.text);
+      }
+      html = renderMarkdown(parts.join('\n'));
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'message-meta';
+    meta.innerHTML = `<span>User</span><span>${formatTime(entry.timestamp)}</span>`;
+    el.appendChild(meta);
+
+    const contentEl = document.createElement('div');
+    contentEl.className = 'message-content';
+    contentEl.innerHTML = html;
+    el.appendChild(contentEl);
+    return el;
+  }
+
+  if (msg.type === 'assistant') {
+    el.className = 'message message-assistant';
+    const entries = msg.entries;
+    const toolUseMap = msg.toolUseMap;
+    const progressMap = msg.progressMap;
+
+    // Merge all content blocks
+    const allBlocks = [];
+    let model = '';
+    let timestamp = '';
+    let usage = null;
+
+    for (const entry of entries) {
+      if (entry.message?.model) model = entry.message.model;
+      if (entry.timestamp) timestamp = entry.timestamp;
+      if (entry.message?.usage) usage = entry.message.usage;
+      const content = entry.message?.content;
+      if (Array.isArray(content)) {
+        for (const b of content) allBlocks.push(b);
+      }
+    }
+
+    // Meta
+    const meta = document.createElement('div');
+    meta.className = 'message-meta';
+    let metaHtml = `<span class="model-name">${escapeHtml(formatModelName(model))}</span>`;
+    metaHtml += `<span>${formatTime(timestamp)}</span>`;
+    if (usage) {
+      const tokenStr = `in:${formatTokens(usage.input_tokens || 0)} out:${formatTokens(usage.output_tokens || 0)}`;
+      metaHtml += `<span class="token-info">${tokenStr}</span>`;
+    }
+    meta.innerHTML = metaHtml;
+    el.appendChild(meta);
+
+    // Render blocks
+    for (const block of allBlocks) {
+      if (block.type === 'thinking') {
+        el.appendChild(renderThinkingBlock(block));
+      } else if (block.type === 'text') {
+        const contentEl = document.createElement('div');
+        contentEl.className = 'message-content';
+        contentEl.innerHTML = renderMarkdown(block.text);
+        el.appendChild(contentEl);
+      } else if (block.type === 'tool_use') {
+        const pair = toolUseMap.get(block.id) || {};
+        const progEntries = progressMap.get(block.id) || [];
+        el.appendChild(renderToolBlock(block, pair.result, progEntries));
+      }
+    }
+    return el;
+  }
+
+  return el;
+}
+
+// ============ Thinking block ============
+function renderThinkingBlock(block) {
+  const details = document.createElement('details');
+  details.className = 'thinking-block';
+  const preview = (block.thinking || '').substring(0, 60).replace(/\n/g, ' ');
+  details.innerHTML = `<summary><span class="badge">Thinking</span> <span>${escapeHtml(preview)}...</span></summary>`;
+  const content = document.createElement('div');
+  content.className = 'details-content';
+  content.textContent = block.thinking || '';
+  details.appendChild(content);
+  return details;
+}
+
+// ============ Tool block ============
+function renderToolBlock(toolUse, toolResult, progressEntries) {
+  const details = document.createElement('details');
+  details.className = 'tool-block';
+
+  const toolName = toolUse.name || 'Unknown Tool';
+  const inputSummary = getToolInputSummary(toolUse);
+  const hasProgress = progressEntries.length > 0;
+  const progressBadge = hasProgress ? ` <span class="badge">${progressEntries.length} steps</span>` : '';
+
+  details.innerHTML = `<summary><span class="badge">${escapeHtml(toolName)}</span> <span>${escapeHtml(inputSummary)}</span>${progressBadge}</summary>`;
+
+  // Lazy-load content on open
+  let loaded = false;
+  details.addEventListener('toggle', () => {
+    if (details.open && !loaded) {
+      loaded = true;
+      const contentEl = document.createElement('div');
+      contentEl.className = 'details-content';
+
+      // Input
+      contentEl.innerHTML = '<div class="tool-section-label">Input</div>';
+      const inputEl = document.createElement('div');
+      inputEl.className = 'tool-json';
+      inputEl.textContent = JSON.stringify(toolUse.input || {}, null, 2);
+      contentEl.appendChild(inputEl);
+
+      // Progress
+      if (hasProgress) {
+        contentEl.appendChild(renderProgressEntries(progressEntries));
+      }
+
+      // Result
+      if (toolResult) {
+        const label = document.createElement('div');
+        label.className = 'tool-section-label';
+        label.textContent = toolResult.is_error ? 'Error' : 'Result';
+        contentEl.appendChild(label);
+
+        const resultStr = getToolResultString(toolResult);
+        const resultEl = document.createElement('div');
+        resultEl.className = 'tool-json';
+        if (resultStr.length > 5000) {
+          resultEl.textContent = resultStr.substring(0, 5000);
+          const expandBtn = document.createElement('button');
+          expandBtn.className = 'expand-btn';
+          expandBtn.textContent = `全て表示 (${formatTokens(resultStr.length)} 文字)`;
+          expandBtn.addEventListener('click', () => {
+            resultEl.textContent = resultStr;
+            expandBtn.remove();
+          });
+          contentEl.appendChild(resultEl);
+          contentEl.appendChild(expandBtn);
+        } else {
+          resultEl.textContent = resultStr;
+          contentEl.appendChild(resultEl);
+        }
+      }
+
+      details.appendChild(contentEl);
+    }
+  });
+
+  return details;
+}
+
+function getToolInputSummary(toolUse) {
+  const input = toolUse.input || {};
+  const name = toolUse.name || '';
+  if (name === 'Read' || name === 'Glob' || name === 'Grep') {
+    return input.file_path || input.path || input.pattern || '';
+  }
+  if (name === 'Write' || name === 'Edit') {
+    return input.file_path || '';
+  }
+  if (name === 'Bash') {
+    const cmd = input.command || '';
+    return cmd.length > 80 ? cmd.substring(0, 80) + '...' : cmd;
+  }
+  if (name === 'Agent') {
+    return input.description || input.prompt?.substring(0, 60) || '';
+  }
+  if (name === 'WebSearch') return input.query || '';
+  if (name === 'WebFetch') return input.url || '';
+  // Generic
+  const vals = Object.values(input);
+  const first = vals.find(v => typeof v === 'string');
+  if (first) return first.length > 60 ? first.substring(0, 60) + '...' : first;
+  return '';
+}
+
+function getToolResultString(toolResult) {
+  const content = toolResult.content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content.map(b => {
+      if (b.type === 'text') return b.text;
+      if (b.type === 'image') return '[Image]';
+      return JSON.stringify(b);
+    }).join('\n');
+  }
+  return JSON.stringify(content, null, 2);
+}
+
+// ============ Progress entries ============
+function renderProgressEntries(progressEntries) {
+  const wrapper = document.createElement('details');
+  wrapper.className = 'progress-block';
+  wrapper.innerHTML = `<summary><span class="badge">Progress</span> ${progressEntries.length} entries</summary>`;
+
+  let loaded = false;
+  wrapper.addEventListener('toggle', () => {
+    if (wrapper.open && !loaded) {
+      loaded = true;
+      const contentEl = document.createElement('div');
+      contentEl.className = 'details-content';
+
+      for (const pe of progressEntries) {
+        const data = pe.data || {};
+        const innerMsg = data.message?.message;
+        if (!innerMsg) continue;
+
+        const role = innerMsg.role || '?';
+        const content = innerMsg.content;
+        const div = document.createElement('div');
+        div.style.marginBottom = '6px';
+        div.style.paddingBottom = '6px';
+        div.style.borderBottom = '1px solid var(--border-color)';
+
+        if (Array.isArray(content)) {
+          for (const b of content) {
+            if (b.type === 'text') {
+              const roleLabel = role === 'user' ? 'Sub-User' : 'Sub-Assistant';
+              const textPreview = b.text.length > 200 ? b.text.substring(0, 200) + '...' : b.text;
+              div.innerHTML += `<div><span class="badge">${roleLabel}</span> ${escapeHtml(textPreview)}</div>`;
+            } else if (b.type === 'tool_use') {
+              div.innerHTML += `<div><span class="badge">${escapeHtml(b.name || 'Tool')}</span> ${escapeHtml(getToolInputSummary(b))}</div>`;
+            } else if (b.type === 'tool_result') {
+              const resStr = getToolResultString(b);
+              const preview = resStr.length > 200 ? resStr.substring(0, 200) + '...' : resStr;
+              div.innerHTML += `<div><span class="badge">Result</span> ${escapeHtml(preview)}</div>`;
+            }
+          }
+        } else if (typeof content === 'string' && content.trim()) {
+          div.innerHTML = `<span class="badge">${role}</span> ${escapeHtml(content.substring(0, 200))}`;
+        }
+
+        if (div.innerHTML) contentEl.appendChild(div);
+      }
+
+      wrapper.appendChild(contentEl);
+    }
+  });
+
+  return wrapper;
+}
+
+// ============ Helpers ============
+function renderMarkdown(text) {
+  if (!text) return '';
+  try {
+    const html = marked.parse(text);
+    // Sanitize: remove javascript: URLs and on* event handlers
+    return html
+      .replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"')
+      .replace(/src\s*=\s*["']javascript:[^"']*["']/gi, 'src=""')
+      .replace(/\bon\w+\s*=\s*["'][^"']*["']/gi, '');
+  } catch {
+    return escapeHtml(text);
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function formatDate(ts) {
+  if (!ts) return '';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch { return ''; }
+}
+
+function formatTime(ts) {
+  if (!ts) return '';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch { return ''; }
+}
+
+function formatTokens(n) {
+  if (!n) return '0';
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+  return String(n);
+}
+
+function formatModelName(model) {
+  if (!model) return '';
+  return model.replace('claude-', '').replace(/-\d{8}$/, '');
+}
+</script>
+</body>
+</html>
