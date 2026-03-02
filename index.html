@@ -941,6 +941,9 @@ function renderSession(session) {
 
   // Scroll to top
   chatEl.scrollTop = 0;
+
+  // Debug: show message count
+  console.log('[renderSession]', session.id, 'entries:', entries.length, 'messages:', messages.length);
 }
 
 // ============ Build messages from entries ============
@@ -1608,6 +1611,7 @@ function scrollToMatch(targetUuid, targetToolId, query) {
   const chatEl = document.getElementById('chatMessages');
   const allMsgs = chatEl.querySelectorAll('.message[data-uuids]');
   let targetMsg = null;
+  let foundBy = '';
 
   // Step 1: Find by UUID
   if (targetUuid) {
@@ -1615,6 +1619,7 @@ function scrollToMatch(targetUuid, targetToolId, query) {
       const uuids = msg.dataset.uuids;
       if (uuids && uuids.split(',').includes(targetUuid)) {
         targetMsg = msg;
+        foundBy = 'uuid';
         break;
       }
     }
@@ -1625,6 +1630,7 @@ function scrollToMatch(targetUuid, targetToolId, query) {
     for (const msg of allMsgs) {
       if (msg.querySelector(`details[data-tool-id="${CSS.escape(targetToolId)}"]`)) {
         targetMsg = msg;
+        foundBy = 'toolId';
         break;
       }
     }
@@ -1636,10 +1642,13 @@ function scrollToMatch(targetUuid, targetToolId, query) {
     for (const msg of allMsgs) {
       if (msg.textContent.toLowerCase().includes(lq)) {
         targetMsg = msg;
+        foundBy = 'text';
         break;
       }
     }
   }
+
+  console.log('[scrollToMatch]', 'msgs:', allMsgs.length, 'found:', foundBy || 'NONE', 'uuid:', targetUuid?.substring(0,12), 'toolId:', targetToolId?.substring(0,12));
 
   if (!targetMsg) return;
 
