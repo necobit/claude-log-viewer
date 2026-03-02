@@ -802,9 +802,11 @@ async function loadFiles(files) {
       const text = await file.text();
       const lines = text.split('\n').filter(l => l.trim());
       const entries = [];
+      let parseErrors = 0;
       for (const line of lines) {
-        try { entries.push(JSON.parse(line)); } catch {}
+        try { entries.push(JSON.parse(line)); } catch { parseErrors++; }
       }
+      console.log('[loadFiles]', file.name, 'fileSize:', file.size, 'textLen:', text.length, 'lines:', lines.length, 'entries:', entries.length, 'parseErrors:', parseErrors);
       if (entries.length === 0) continue;
 
       const sessionId = entries[0]?.sessionId || file.name.replace('.jsonl', '');
