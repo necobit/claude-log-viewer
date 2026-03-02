@@ -555,7 +555,7 @@ mark.search-hit.current {
       <h1>Claude Log Viewer</h1>
     </div>
     <div class="header-actions">
-      <button class="theme-toggle" onclick="openLogSearch()" title="ログ内検索 (Cmd+F)">&#128269; 検索</button>
+      <button class="theme-toggle" onclick="openLogSearch()" title="ログ内検索 (/)">&#128269; 検索</button>
       <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">Light</button>
     </div>
   </div>
@@ -583,7 +583,7 @@ mark.search-hit.current {
     <!-- Chat -->
     <div class="chat-container">
       <div class="log-search-bar" id="logSearchBar">
-        <input type="text" id="logSearchInput" placeholder="ログ内を検索... (Cmd+F)" spellcheck="false">
+        <input type="text" id="logSearchInput" placeholder="ログ内を検索... ( / )" spellcheck="false">
         <span class="search-info" id="searchInfo"></span>
         <button onclick="navigateSearch(-1)" title="前へ">&#9650;</button>
         <button onclick="navigateSearch(1)" title="次へ">&#9660;</button>
@@ -1620,7 +1620,7 @@ function scrollToMatch(targetUuid, targetToolId, query) {
     }
   }
 
-  // Step 2: If not found by UUID and we have a toolId, find by tool block
+  // Step 2: Find by tool block data-tool-id
   if (!targetMsg && targetToolId) {
     for (const msg of allMsgs) {
       if (msg.querySelector(`details[data-tool-id="${CSS.escape(targetToolId)}"]`)) {
@@ -1630,47 +1630,49 @@ function scrollToMatch(targetUuid, targetToolId, query) {
     }
   }
 
-  // Step 3: Fallback - expand all details and search for query text
+  // Step 3: Fallback - search visible text
   if (!targetMsg && query) {
-    const lowerQuery = query.toLowerCase();
+    const lq = query.toLowerCase();
     for (const msg of allMsgs) {
-      // First check visible text
-      if (msg.textContent.toLowerCase().includes(lowerQuery)) {
+      if (msg.textContent.toLowerCase().includes(lq)) {
         targetMsg = msg;
         break;
       }
-    }
-    // If still not found, expand all details and search
-    if (!targetMsg) {
-      for (const msg of allMsgs) {
-        const detailsList = msg.querySelectorAll('details:not([open])');
-        for (const d of detailsList) {
-          d.open = true;
-          d.dispatchEvent(new Event('toggle'));
-        }
-      }
-      // Wait for lazy-loaded content
-      setTimeout(() => {
-        for (const msg of allMsgs) {
-          if (msg.textContent.toLowerCase().includes(lowerQuery)) {
-            targetMsg = msg;
-            expandAndHighlight(msg, targetToolId, query);
-            scrollToElement(msg);
-            return;
-          }
-        }
-      }, 200);
-      return;
     }
   }
 
   if (!targetMsg) return;
 
-  expandAndHighlight(targetMsg, targetToolId, query);
-  scrollToElement(targetMsg);
+  // Expand relevant details blocks, then highlight and scroll
+  expandDetailsInMessage(targetMsg, targetToolId);
+
+  // Wait for lazy-loaded content to render, then highlight + scroll
+  setTimeout(() => {
+    const mark = highlightInElement(targetMsg, query);
+    if (mark) {
+      mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      // Text not found after expanding - try expanding ALL details
+      for (const d of targetMsg.querySelectorAll('details:not([open])')) {
+        d.open = true;
+        d.dispatchEvent(new Event('toggle'));
+      }
+      setTimeout(() => {
+        const mark2 = highlightInElement(targetMsg, query);
+        if (mark2) {
+          mark2.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+          targetMsg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 300);
+    }
+    // Visual indicator on message
+    targetMsg.style.outline = '2px solid var(--accent)';
+    setTimeout(() => { targetMsg.style.outline = ''; }, 5000);
+  }, 300);
 }
 
-function expandAndHighlight(targetMsg, targetToolId, query) {
+function expandDetailsInMessage(targetMsg, targetToolId) {
   if (targetToolId) {
     const toolDetails = targetMsg.querySelector(`details[data-tool-id="${CSS.escape(targetToolId)}"]`);
     if (toolDetails) {
@@ -1678,35 +1680,29 @@ function expandAndHighlight(targetMsg, targetToolId, query) {
         toolDetails.open = true;
         toolDetails.dispatchEvent(new Event('toggle'));
       }
-      // Expand progress blocks inside
-      setTimeout(() => {
-        for (const pd of toolDetails.querySelectorAll('.progress-block:not([open])')) {
-          pd.open = true;
-          pd.dispatchEvent(new Event('toggle'));
-        }
-        setTimeout(() => highlightInElement(targetMsg, query), 100);
-      }, 100);
+      for (const pd of toolDetails.querySelectorAll('details:not([open])')) {
+        pd.open = true;
+        pd.dispatchEvent(new Event('toggle'));
+      }
       return;
     }
   }
-  // Expand all closed details in target message
+  // No specific tool block - expand all thinking/tool blocks in this message
   for (const d of targetMsg.querySelectorAll('details:not([open])')) {
     d.open = true;
     d.dispatchEvent(new Event('toggle'));
   }
-  setTimeout(() => highlightInElement(targetMsg, query), 200);
-}
-
-function scrollToElement(el) {
-  setTimeout(() => {
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    el.style.outline = '2px solid var(--accent)';
-    setTimeout(() => { el.style.outline = ''; }, 3000);
-  }, 150);
 }
 
 function highlightInElement(el, query) {
-  if (!query) return;
+  if (!query) return null;
+  // Remove previous highlights
+  for (const old of el.querySelectorAll('mark.search-hit')) {
+    const text = document.createTextNode(old.textContent);
+    old.parentNode.replaceChild(text, old);
+  }
+  el.normalize();
+
   const lowerQuery = query.toLowerCase();
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
   const nodes = [];
@@ -1717,6 +1713,7 @@ function highlightInElement(el, query) {
       nodes.push(node);
     }
   }
+  let firstMark = null;
   for (const node of nodes) {
     const text = node.textContent;
     const lower = text.toLowerCase();
@@ -1730,10 +1727,9 @@ function highlightInElement(el, query) {
     frag.appendChild(mark);
     if (idx + query.length < text.length) frag.appendChild(document.createTextNode(text.substring(idx + query.length)));
     node.parentNode.replaceChild(frag, node);
-    // Scroll to the first highlight
-    setTimeout(() => mark.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
-    return; // only highlight first match
+    if (!firstMark) firstMark = mark;
   }
+  return firstMark;
 }
 
 function highlightSearchResult() {
@@ -1769,9 +1765,12 @@ document.getElementById('logSearchInput').addEventListener('keydown', e => {
   }
 });
 
-// Cmd+F / Ctrl+F to open search
+// "/" key to open log search (like GitHub, YouTube etc.)
+// Cmd+F is left for browser native search
 document.addEventListener('keydown', e => {
-  if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+  if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     if (sessions.length > 0) {
       e.preventDefault();
       openLogSearch();
