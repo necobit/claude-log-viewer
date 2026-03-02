@@ -471,21 +471,54 @@ details .details-content {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.search-box {
-  padding: 0 12px 8px;
+/* ============ Log search bar ============ */
+.log-search-bar {
+  display: none;
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
 }
-.search-box input {
-  width: 100%;
-  padding: 6px 8px;
+.log-search-bar.visible { display: flex; }
+.log-search-bar input {
+  flex: 1;
+  padding: 6px 10px;
   background: var(--bg-input);
   border: 1px solid var(--border-color);
   border-radius: 4px;
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 13px;
   outline: none;
 }
-.search-box input:focus { border-color: var(--accent); }
-.search-box input::placeholder { color: var(--text-muted); }
+.log-search-bar input:focus { border-color: var(--accent); }
+.log-search-bar input::placeholder { color: var(--text-muted); }
+.log-search-bar .search-info {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.log-search-bar button {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.log-search-bar button:hover { background: var(--bg-hover); }
+mark.search-hit {
+  background: #b8860b;
+  color: #fff;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+mark.search-hit.current {
+  background: #e67e22;
+  outline: 2px solid #e67e22;
+}
 
 /* ============ Full-page drop overlay ============ */
 .drop-overlay {
@@ -522,6 +555,7 @@ details .details-content {
       <h1>Claude Log Viewer</h1>
     </div>
     <div class="header-actions">
+      <button class="theme-toggle" onclick="openLogSearch()" title="ログ内検索 (Cmd+F)">&#128269; 検索</button>
       <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">Light</button>
     </div>
   </div>
@@ -541,9 +575,6 @@ details .details-content {
           ここにフォルダを<br>ドラッグ&ドロップ
         </div>
       </div>
-      <div class="search-box" style="display:none" id="searchBox">
-        <input type="text" placeholder="セッションを検索..." oninput="filterSessions(this.value)">
-      </div>
       <div class="session-list" id="sessionList"></div>
       <div class="sidebar-stats" id="sidebarStats" style="display:none"></div>
     </div>
@@ -551,6 +582,13 @@ details .details-content {
 
     <!-- Chat -->
     <div class="chat-container">
+      <div class="log-search-bar" id="logSearchBar">
+        <input type="text" id="logSearchInput" placeholder="ログ内を検索... (Cmd+F)" spellcheck="false">
+        <span class="search-info" id="searchInfo"></span>
+        <button onclick="navigateSearch(-1)" title="前へ">&#9650;</button>
+        <button onclick="navigateSearch(1)" title="次へ">&#9660;</button>
+        <button onclick="closeLogSearch()" title="閉じる">&#10005;</button>
+      </div>
       <div class="chat-messages" id="chatMessages">
         <div class="welcome-screen">
           <div class="icon">&#128466;</div>
@@ -567,8 +605,8 @@ details .details-content {
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js" integrity="sha512-pSeTnZAQF/RHxb0ysMoYQI/BRZsa5XuklcrgFfU3YZIdnD3LvkkqzrIeHxzFi6gKtI8Cpq2DEWdZjMTcNVhUYA==" crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" integrity="sha512-D9gUyxqja7hBtkWpPWGt9wfbfaMGVt9gnyCvYa+jojwwPHLCzUm5i8rpk7vD7wNee9bA35eYIjobYPaQuKS1MQ==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script>
 // ============ Globals ============
 let sessions = [];
@@ -828,14 +866,6 @@ function renderSessionList() {
     allSessionItems.push(item);
   }
 
-  document.getElementById('searchBox').style.display = sessions.length > 1 ? '' : 'none';
-}
-
-function filterSessions(query) {
-  const q = query.toLowerCase();
-  for (const item of allSessionItems) {
-    item.style.display = item.dataset.searchText.includes(q) ? '' : 'none';
-  }
 }
 
 function selectSession(id) {
@@ -1300,6 +1330,256 @@ function formatModelName(model) {
   if (!model) return '';
   return model.replace('claude-', '').replace(/-\d{8}$/, '');
 }
+
+// ============ Log Search ============
+let searchResults = [];
+let searchResultIndex = -1;
+let searchDebounce = null;
+let isSearchMode = false;
+
+function openLogSearch() {
+  const bar = document.getElementById('logSearchBar');
+  bar.classList.add('visible');
+  const input = document.getElementById('logSearchInput');
+  input.focus();
+  input.select();
+}
+
+function closeLogSearch() {
+  document.getElementById('logSearchBar').classList.remove('visible');
+  document.getElementById('logSearchInput').value = '';
+  document.getElementById('searchInfo').textContent = '';
+  searchResults = [];
+  searchResultIndex = -1;
+  // Restore normal view
+  if (isSearchMode && currentSessionId) {
+    isSearchMode = false;
+    const session = sessions.find(s => s.id === currentSessionId);
+    if (session) renderSession(session);
+  }
+  isSearchMode = false;
+}
+
+// Extract all searchable text from a single JSONL entry
+function extractTexts(entry) {
+  const texts = [];
+  const type = entry.type;
+
+  if (type === 'system') {
+    if (entry.content) texts.push({ label: 'System', text: entry.content });
+    return texts;
+  }
+
+  const content = entry.message?.content;
+  if (!content) {
+    // progress entries
+    if (type === 'progress') {
+      const inner = entry.data?.message?.message;
+      if (inner && Array.isArray(inner.content)) {
+        for (const b of inner.content) {
+          if (b.type === 'text' && b.text) texts.push({ label: 'Progress', text: b.text });
+          if (b.type === 'tool_use') texts.push({ label: `Progress/${b.name||'Tool'}`, text: JSON.stringify(b.input||{}) });
+          if (b.type === 'tool_result') {
+            const rc = b.content;
+            if (typeof rc === 'string') texts.push({ label: 'Progress/Result', text: rc });
+            else if (Array.isArray(rc)) {
+              for (const rb of rc) { if (rb.text) texts.push({ label: 'Progress/Result', text: rb.text }); }
+            }
+          }
+        }
+      }
+    }
+    return texts;
+  }
+
+  if (typeof content === 'string') {
+    texts.push({ label: type === 'user' ? 'User' : 'Assistant', text: content });
+    return texts;
+  }
+
+  if (Array.isArray(content)) {
+    for (const b of content) {
+      if (b.type === 'text' && b.text) {
+        texts.push({ label: type === 'user' ? 'User' : 'Assistant', text: b.text });
+      }
+      if (b.type === 'thinking' && b.thinking) {
+        texts.push({ label: 'Thinking', text: b.thinking });
+      }
+      if (b.type === 'tool_use') {
+        texts.push({ label: b.name || 'Tool', text: JSON.stringify(b.input || {}) });
+      }
+      if (b.type === 'tool_result') {
+        const rc = b.content;
+        if (typeof rc === 'string') texts.push({ label: 'Result', text: rc });
+        else if (Array.isArray(rc)) {
+          for (const rb of rc) { if (rb.text) texts.push({ label: 'Result', text: rb.text }); }
+        }
+      }
+    }
+  }
+  return texts;
+}
+
+function performSearch(query) {
+  searchResults = [];
+  searchResultIndex = -1;
+  const info = document.getElementById('searchInfo');
+
+  if (!query || query.length < 2) {
+    info.textContent = '';
+    if (isSearchMode && currentSessionId) {
+      isSearchMode = false;
+      const session = sessions.find(s => s.id === currentSessionId);
+      if (session) renderSession(session);
+    }
+    return;
+  }
+
+  const lowerQuery = query.toLowerCase();
+
+  // Search across all sessions
+  for (const session of sessions) {
+    for (const entry of session.entries) {
+      if (entry.type === 'file-history-snapshot' || entry.type === 'summary') continue;
+      const texts = extractTexts(entry);
+      for (const { label, text } of texts) {
+        const lowerText = text.toLowerCase();
+        const idx = lowerText.indexOf(lowerQuery);
+        if (idx !== -1) {
+          const start = Math.max(0, idx - 40);
+          const end = Math.min(text.length, idx + query.length + 80);
+          const snippet = (start > 0 ? '...' : '') +
+            text.substring(start, end) +
+            (end < text.length ? '...' : '');
+          searchResults.push({
+            sessionId: session.id,
+            sessionName: session.name,
+            label,
+            snippet,
+            matchIndex: idx - start + (start > 0 ? 3 : 0),
+            matchLen: query.length,
+            timestamp: entry.timestamp,
+          });
+          break; // one hit per entry is enough for the result list
+        }
+      }
+    }
+  }
+  info.textContent = `${searchResults.length} 件`;
+  isSearchMode = true;
+  renderSearchResults(query);
+  if (searchResults.length > 0) {
+    searchResultIndex = 0;
+    highlightSearchResult();
+  }
+}
+
+function renderSearchResults(query) {
+  const chatEl = document.getElementById('chatMessages');
+  chatEl.innerHTML = '';
+
+  if (searchResults.length === 0) {
+    chatEl.innerHTML = '<div class="welcome-screen"><p>該当なし</p></div>';
+    return;
+  }
+
+  const lowerQuery = query.toLowerCase();
+
+  for (let i = 0; i < searchResults.length; i++) {
+    const r = searchResults[i];
+    const div = document.createElement('div');
+    div.className = 'message message-assistant search-result-item';
+    div.dataset.index = i;
+    div.style.cursor = 'pointer';
+    div.style.maxWidth = '100%';
+
+    // Header line
+    const meta = document.createElement('div');
+    meta.className = 'message-meta';
+    meta.innerHTML = `<span class="model-name">${escapeHtml(r.sessionName)}</span>` +
+      `<span class="badge">${escapeHtml(r.label)}</span>` +
+      `<span>${formatTime(r.timestamp)}</span>`;
+    div.appendChild(meta);
+
+    // Snippet with highlight
+    const snippetEl = document.createElement('div');
+    snippetEl.className = 'message-content';
+    snippetEl.style.fontSize = '13px';
+    const snippetText = r.snippet;
+    const lowerSnippet = snippetText.toLowerCase();
+    let html = '';
+    let pos = 0;
+    while (pos < snippetText.length) {
+      const idx = lowerSnippet.indexOf(lowerQuery, pos);
+      if (idx === -1) {
+        html += escapeHtml(snippetText.substring(pos));
+        break;
+      }
+      html += escapeHtml(snippetText.substring(pos, idx));
+      html += '<mark class="search-hit">' + escapeHtml(snippetText.substring(idx, idx + query.length)) + '</mark>';
+      pos = idx + query.length;
+    }
+    snippetEl.innerHTML = html;
+    div.appendChild(snippetEl);
+
+    div.addEventListener('click', () => {
+      // Navigate to the session and close search
+      const sessionId = r.sessionId;
+      document.getElementById('logSearchInput').value = '';
+      document.getElementById('logSearchBar').classList.remove('visible');
+      document.getElementById('searchInfo').textContent = '';
+      searchResults = [];
+      searchResultIndex = -1;
+      isSearchMode = false;
+      selectSession(sessionId);
+    });
+
+    chatEl.appendChild(div);
+  }
+}
+
+function highlightSearchResult() {
+  const items = document.querySelectorAll('.search-result-item');
+  items.forEach(el => el.style.outline = 'none');
+  if (searchResultIndex >= 0 && searchResultIndex < items.length) {
+    const item = items[searchResultIndex];
+    item.style.outline = '2px solid var(--accent)';
+    item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+function navigateSearch(dir) {
+  if (searchResults.length === 0) return;
+  searchResultIndex = (searchResultIndex + dir + searchResults.length) % searchResults.length;
+  highlightSearchResult();
+  document.getElementById('searchInfo').textContent =
+    `${searchResultIndex + 1} / ${searchResults.length} 件`;
+}
+
+// Input handler with debounce
+document.getElementById('logSearchInput').addEventListener('input', e => {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => performSearch(e.target.value), 400);
+});
+
+document.getElementById('logSearchInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    navigateSearch(e.shiftKey ? -1 : 1);
+  } else if (e.key === 'Escape') {
+    closeLogSearch();
+  }
+});
+
+// Cmd+F / Ctrl+F to open search
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+    if (sessions.length > 0) {
+      e.preventDefault();
+      openLogSearch();
+    }
+  }
+});
 </script>
 </body>
 </html>
