@@ -1413,6 +1413,7 @@ let searchDebounce = null;
 let isSearchMode = false;
 let lastSearchQuery = '';
 let lastSearchResults = [];
+let lastClickedSearchIndex = -1;
 
 function openLogSearch() {
   const bar = document.getElementById('logSearchBar');
@@ -1564,10 +1565,13 @@ function addSearchBackBar(query) {
     searchResults = lastSearchResults;
     isSearchMode = true;
     renderSearchResults(query);
-    if (searchResults.length > 0) {
+    // Focus on the previously clicked result
+    if (lastClickedSearchIndex >= 0 && lastClickedSearchIndex < searchResults.length) {
+      searchResultIndex = lastClickedSearchIndex;
+    } else {
       searchResultIndex = 0;
-      highlightSearchResult();
     }
+    highlightSearchResult();
   });
   chatEl.insertBefore(bar, chatEl.firstChild);
 }
@@ -1628,6 +1632,7 @@ function renderSearchResults(query) {
       // Save search state for "back" navigation
       lastSearchQuery = searchQuery;
       lastSearchResults = [...searchResults];
+      lastClickedSearchIndex = i;
       document.getElementById('logSearchInput').value = '';
       document.getElementById('logSearchBar').classList.remove('visible');
       document.getElementById('searchInfo').textContent = '';
